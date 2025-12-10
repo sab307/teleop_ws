@@ -68,6 +68,7 @@ func loadConfig() *Config {
 // MessageRouter handles routing of Twist messages between peers.
 type MessageRouter struct {
 	peerManager *PeerManager
+	wsManager   *WSManager  // WebSocket manager for cross-protocol routing
 	stats       *RouterStats
 }
 
@@ -86,8 +87,14 @@ func NewMessageRouter(pm *PeerManager) *MessageRouter {
 	}
 }
 
+// SetWSManager sets the WebSocket manager for cross-protocol routing.
+func (mr *MessageRouter) SetWSManager(wsm *WSManager) {
+	mr.wsManager = wsm
+}
+
 // HandleMessage processes an incoming DataChannel message.
 // Routes Twist messages from web clients to Python clients and vice versa.
+// Also bridges to WebSocket clients.
 func (mr *MessageRouter) HandleMessage(from *Peer, data []byte) {
 	mr.stats.MessagesReceived++
 
@@ -100,21 +107,43 @@ func (mr *MessageRouter) HandleMessage(from *Peer, data []byte) {
 		return
 	}
 
-	log.Printf("[Router] Twist from %s: %s", from.ID, twist.String())
+	if !twist.IsZero() {
+		log.Printf("[Router] Twist from %s: %s", from.ID, twist.String())
+	}
 
 	// Route based on source peer type
 	switch from.Type {
 	case PeerTypeWeb:
-		// Forward to all Python clients
+		// Forward to all Python clients (WebRTC)
 		sent := mr.peerManager.BroadcastToType(PeerTypePython, data)
 		mr.stats.MessagesForwarded += uint64(sent)
-		log.Printf("[Router] Forwarded to %d Python client(s)", sent)
+		
+		// Also forward to Python WebSocket clients
+		if mr.wsManager != nil {
+			wsSent := mr.wsManager.BroadcastToType("python", data)
+			mr.stats.MessagesForwarded += uint64(wsSent)
+			sent += wsSent
+		}
+		
+		if sent > 0 {
+			log.Printf("[Router] Forwarded to %d Python client(s)", sent)
+		}
 
 	case PeerTypePython:
-		// Forward to all web clients (for status updates)
+		// Forward to all web clients (WebRTC)
 		sent := mr.peerManager.BroadcastToType(PeerTypeWeb, data)
 		mr.stats.MessagesForwarded += uint64(sent)
-		log.Printf("[Router] Forwarded to %d web client(s)", sent)
+		
+		// Also forward to web WebSocket clients
+		if mr.wsManager != nil {
+			wsSent := mr.wsManager.BroadcastToType("web", data)
+			mr.stats.MessagesForwarded += uint64(wsSent)
+			sent += wsSent
+		}
+		
+		if sent > 0 {
+			log.Printf("[Router] Forwarded to %d web client(s)", sent)
+		}
 	}
 }
 
@@ -154,8 +183,11 @@ func main() {
 	// Initialize signaling handler
 	signaling := NewSignalingHandler(peerManager)
 
-	// Initialize WebSocket manager
-	wsManager := NewWSManager(router)
+	// Initialize WebSocket manager with router for cross-protocol bridging
+	wsManager := NewWSManager(router, peerManager)
+	
+	// Connect WSManager to router for bidirectional bridging
+	router.SetWSManager(wsManager)
 
 	// Set up HTTP server
 	mux := http.NewServeMux()

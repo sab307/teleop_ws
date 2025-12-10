@@ -87,14 +87,18 @@ type WSManager struct {
 
 	// Message router for data forwarding
 	router *MessageRouter
+	
+	// Peer manager for cross-protocol bridging (WebSocket <-> WebRTC)
+	peerManager *PeerManager
 }
 
 // NewWSManager creates a new WebSocket manager
-func NewWSManager(router *MessageRouter) *WSManager {
+func NewWSManager(router *MessageRouter, peerManager *PeerManager) *WSManager {
 	return &WSManager{
 		signalingClients: make(map[string]*WSClient),
 		dataClients:      make(map[string]*WSClient),
 		router:           router,
+		peerManager:      peerManager,
 	}
 }
 
@@ -381,12 +385,29 @@ func (c *WSClient) handleBinaryData(data []byte) {
 
 	latency := twist.GetLatencyMs()
 	if !twist.IsZero() {
-		log.Printf("[WS-Data] Twist from %s: lin.y=%.2f, ang.z=%.2f, latency=%dms",
-			c.ID, twist.Linear.Y, twist.Angular.Z, latency)
+		log.Printf("[WS-Data] Twist from %s (type: %s): lin.y=%.2f, ang.z=%.2f, latency=%dms",
+			c.ID, c.PeerType, twist.Linear.Y, twist.Angular.Z, latency)
 	}
 
-	// Forward to other peer type
+	// Forward to other WebSocket clients of opposite type
 	c.manager.forwardData(c.ID, c.PeerType, data)
+	
+	// Also forward to WebRTC peers of opposite type (cross-protocol bridging)
+	if c.manager.peerManager != nil {
+		var targetType PeerType
+		if c.PeerType == "web" {
+			targetType = PeerTypePython
+		} else {
+			targetType = PeerTypeWeb
+		}
+		sent := c.manager.peerManager.BroadcastToType(targetType, data)
+		if sent > 0 {
+			log.Printf("[WS-Data] Bridged to %d WebRTC %s client(s)", sent, targetType)
+			if c.manager.router != nil {
+				c.manager.router.stats.MessagesForwarded += uint64(sent)
+			}
+		}
+	}
 }
 
 // handleDataMessage processes JSON data messages
@@ -410,7 +431,7 @@ func (c *WSClient) handleDataMessage(msg *DataMessage) {
 	}
 }
 
-// forwardData forwards data to clients of the opposite peer type
+// forwardData forwards data to WebSocket clients of the opposite peer type
 func (m *WSManager) forwardData(senderID, senderType string, data []byte) {
 	m.dataMu.RLock()
 	defer m.dataMu.RUnlock()
@@ -435,6 +456,26 @@ func (m *WSManager) forwardData(senderID, senderType string, data []byte) {
 	if m.router != nil && forwarded > 0 {
 		m.router.stats.MessagesForwarded += uint64(forwarded)
 	}
+}
+
+// BroadcastToType sends data to all WebSocket clients of a specific type
+// Used for cross-protocol bridging from WebRTC to WebSocket
+func (m *WSManager) BroadcastToType(targetType string, data []byte) int {
+	m.dataMu.RLock()
+	defer m.dataMu.RUnlock()
+
+	sent := 0
+	for _, client := range m.dataClients {
+		if client.PeerType == targetType {
+			select {
+			case client.Send <- data:
+				sent++
+			default:
+				log.Printf("[WS-Data] Send buffer full for %s", client.ID)
+			}
+		}
+	}
+	return sent
 }
 
 // broadcastSignaling broadcasts signaling message to other clients
