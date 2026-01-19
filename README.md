@@ -6,17 +6,17 @@ This server acts as a Selective Forwarding Unit (SFU) relay between web clients 
 messages through DataChannels or WebSockets.
 
 ## Architecture:
-    Web clients connect and send control commands (Twist messages)
-    Python client connects and receives forwarded Twist messages
-    Messages are forwarded in binary format for minimal latency
+Web clients connect and send control commands (Twist messages)
+Python client connects and receives forwarded Twist messages
+Messages are forwarded in binary format for minimal latency
 
 ## Endpoints:
-###   - POST /offer      - WebRTC signaling (SDP offer/answer exchange)
-###   - POST /ice        - ICE candidate exchange
-###   - GET  /status     - Server status and peer information
-###   - GET  /health     - Health check
-###   - WS   /ws/signaling - WebSocket for signaling with ping/pong keepalive
-###   - WS   /ws/data      - WebSocket for data transfer (alternative to DataChannel)
+POST /offer      - WebRTC signaling (SDP offer/answer exchange)
+POST /ice        - ICE candidate exchange
+GET  /status     - Server status and peer information
+GET  /health     - Health check
+WS   /ws/signaling - WebSocket for signaling with ping/pong keepalive
+WS   /ws/data      - WebSocket for data transfer (alternative to DataChannel)
 
 ## Usage:
 ```
