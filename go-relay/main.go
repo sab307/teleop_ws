@@ -1,30 +1,3 @@
-// WebRTC Relay Server for ROS2 Twist Message Transmission
-//
-// This server acts as a Selective Forwarding Unit (SFU) relay between web clients
-// and Python ROS2 clients. It handles WebRTC signaling and forwards binary Twist
-// messages through DataChannels or WebSockets.
-//
-// Architecture:
-//   - Web clients connect and send control commands (Twist messages)
-//   - Python client connects and receives forwarded Twist messages
-//   - Messages are forwarded in binary format for minimal latency
-//
-// Endpoints:
-//   - POST /offer      - WebRTC signaling (SDP offer/answer exchange)
-//   - POST /ice        - ICE candidate exchange
-//   - GET  /status     - Server status and peer information
-//   - GET  /health     - Health check
-//   - WS   /ws/signaling - WebSocket for signaling with ping/pong keepalive
-//   - WS   /ws/data      - WebSocket for data transfer (alternative to DataChannel)
-//
-// Usage:
-//
-//	go run .
-//	# Server starts on :8080 by default
-//
-// Environment Variables:
-//   - PORT: HTTP server port (default: 8080)
-//   - STUN_SERVER: STUN server URL (default: stun:stun.l.google.com:19302)
 package main
 
 import (
@@ -68,7 +41,7 @@ func loadConfig() *Config {
 // MessageRouter handles routing of Twist messages between peers.
 type MessageRouter struct {
 	peerManager *PeerManager
-	wsManager   *WSManager  // WebSocket manager for cross-protocol routing
+	wsManager   *WSManager // WebSocket manager for cross-protocol routing
 	stats       *RouterStats
 }
 
@@ -117,14 +90,14 @@ func (mr *MessageRouter) HandleMessage(from *Peer, data []byte) {
 		// Forward to all Python clients (WebRTC)
 		sent := mr.peerManager.BroadcastToType(PeerTypePython, data)
 		mr.stats.MessagesForwarded += uint64(sent)
-		
+
 		// Also forward to Python WebSocket clients
 		if mr.wsManager != nil {
 			wsSent := mr.wsManager.BroadcastToType("python", data)
 			mr.stats.MessagesForwarded += uint64(wsSent)
 			sent += wsSent
 		}
-		
+
 		if sent > 0 {
 			log.Printf("[Router] Forwarded to %d Python client(s)", sent)
 		}
@@ -133,14 +106,14 @@ func (mr *MessageRouter) HandleMessage(from *Peer, data []byte) {
 		// Forward to all web clients (WebRTC)
 		sent := mr.peerManager.BroadcastToType(PeerTypeWeb, data)
 		mr.stats.MessagesForwarded += uint64(sent)
-		
+
 		// Also forward to web WebSocket clients
 		if mr.wsManager != nil {
 			wsSent := mr.wsManager.BroadcastToType("web", data)
 			mr.stats.MessagesForwarded += uint64(wsSent)
 			sent += wsSent
 		}
-		
+
 		if sent > 0 {
 			log.Printf("[Router] Forwarded to %d web client(s)", sent)
 		}
@@ -185,7 +158,7 @@ func main() {
 
 	// Initialize WebSocket manager with router for cross-protocol bridging
 	wsManager := NewWSManager(router, peerManager)
-	
+
 	// Connect WSManager to router for bidirectional bridging
 	router.SetWSManager(wsManager)
 
@@ -221,9 +194,9 @@ func main() {
 			// Serve other static files (js, css, etc.)
 			http.StripPrefix("/", http.FileServer(http.Dir(webClientDir))).ServeHTTP(w, r)
 		})
-		log.Printf("📁 Serving web client from %s", webClientDir)
+		log.Printf("  Serving web client from %s", webClientDir)
 	} else {
-		log.Printf("⚠️  Web client directory not found at %s", webClientDir)
+		log.Printf(" Web client directory not found at %s", webClientDir)
 		log.Println("   Open web-client/index.html directly in browser")
 	}
 
@@ -254,7 +227,7 @@ func main() {
 	}()
 
 	// Start server
-	log.Printf("🚀 Server starting on http://localhost:%s", config.Port)
+	log.Printf("  Server starting on http://localhost:%s", config.Port)
 	log.Println("")
 	log.Println("Web Interface:")
 	log.Printf("  http://localhost:%s/          - Robot Control UI", config.Port)
