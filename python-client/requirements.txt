@@ -1,0 +1,15 @@
+# WebRTC Twist Client Dependencies
+# =================================
+
+# WebRTC implementation for Python
+aiortc>=1.6.0
+
+# Async HTTP client for signaling
+aiohttp>=3.9.0
+
+# Optional: ROS2 integration
+# rclpy  # Uncomment if using ROS2
+
+# Development dependencies
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0
